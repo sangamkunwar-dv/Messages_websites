@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useChatStore } from '@/lib/store/chat-store'
+import { useChatInit } from '@/lib/hooks/use-chat-init'
 import { MessageBubble } from './message-bubble'
 import { MessageInput } from './message-input'
 import { CallDialog } from './call-dialog'
@@ -10,13 +11,16 @@ import { ConversationSettings } from './conversation-settings'
 import { AvatarImage } from '@/components/avatar-image'
 
 export function ChatWindow() {
-  const { currentConversation, currentUser, messages, setMessages, addMessage } = useChatStore()
+  const { currentConversation, currentUser, messages, setMessages, addMessage, conversations } = useChatStore()
   const [otherUser, setOtherUser] = useState<any>(null)
   const [callDialogOpen, setCallDialogOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [messagesLoading, setMessagesLoading] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
+
+  // Initialize chat on mount
+  useChatInit()
 
   // Load messages when conversation changes
   useEffect(() => {

@@ -170,19 +170,10 @@ CREATE POLICY "Users can view conversations they are part of" ON conversations
 
 -- RLS Policies for conversation_participants table
 CREATE POLICY "Users can view conversation participants for their conversations" ON conversation_participants
-  FOR SELECT USING (
-    conversation_id IN (
-      SELECT id FROM conversations WHERE
-        id IN (SELECT conversation_id FROM conversation_participants WHERE user_id = auth.uid())
-    )
-  );
+  FOR SELECT USING (user_id = auth.uid() OR conversation_id IN (SELECT conversation_id FROM conversation_participants WHERE user_id = auth.uid()));
 
 CREATE POLICY "Users can insert conversation participants" ON conversation_participants
-  FOR INSERT WITH CHECK (
-    conversation_id IN (
-      SELECT id FROM conversations WHERE created_by = auth.uid()
-    )
-  );
+  FOR INSERT WITH CHECK (true);
 
 -- RLS Policies for messages table
 CREATE POLICY "Users can view messages from their conversations" ON messages

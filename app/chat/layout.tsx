@@ -63,7 +63,7 @@ export default function ChatLayout({
             )
           `)
           .eq('user_id', authUser.id)
-          .order('created_at', { ascending: false })
+          .order('conversations(created_at)', { ascending: false })
 
         if (convError) {
           console.error('Error fetching conversations:', convError)
