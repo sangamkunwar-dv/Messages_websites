@@ -27,76 +27,65 @@ export function SearchUsers() {
     const value = e.target.value
     setQuery(value)
 
-    if (value.length < 2) {
+    if (value.length < 1) {
       setResults([])
       return
     }
 
     setLoading(true)
     try {
-      console.log('[v0] Searching for:', value)
+      let searchResults = []
       
-      // Search users from users table
-      const { data: searchResults, error: searchError } = await supabase
-        .from('users')
-        .select('id, username, email, avatar_url')
-        .or(`username.ilike.%${value}%,email.ilike.%${value}%`)
-        .limit(10)
+      if (value.length < 2) {
+        // Show all users if query is short
+        const { data: allUsers, error: allError } = await supabase
+          .from('users')
+          .select('id, username, email, avatar_url')
+          .limit(50)
+        
+        if (!allError && allUsers) {
+          searchResults = allUsers
+        }
+      } else {
+        // Search by username or email
+        const { data: queryResults, error: searchError } = await supabase
+          .from('users')
+          .select('id, username, email, avatar_url')
+          .or(`username.ilike.%${value}%,email.ilike.%${value}%`)
+          .limit(50)
 
-      if (searchError) {
-        console.error('[v0] Search error:', searchError)
-        setResults([])
-        setLoading(false)
-        return
-      }
-
-      console.log('[v0] Search results:', searchResults)
-
-      if (!searchResults || searchResults.length === 0) {
-        console.log('[v0] No results found')
-        setResults([])
-        setLoading(false)
-        return
+        if (searchError) {
+          console.error('[v0] Search error:', searchError)
+          setResults([])
+          setLoading(false)
+          return
+        }
+        searchResults = queryResults || []
       }
 
       // Filter out current user
       const filtered = (searchResults || []).filter(user => user.id !== currentUser?.id)
-      console.log('[v0] Filtered results:', filtered)
 
       // Check follow status for each user
-      if (currentUser) {
-        const followStates: Record<string, boolean> = {}
-        for (const user of filtered) {
-          try {
-            // Check follow status
-            const { data: followData, error: followError } = await supabase
-              .from('follows')
-              .select('id')
-              .eq('follower_id', currentUser.id)
-              .eq('following_id', user.id)
-              .limit(1)
+      const followStates: Record<string, boolean> = {}
+      if (currentUser && filtered.length > 0) {
+        const { data: allFollows } = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', currentUser.id)
 
-            if (followError) {
-              console.error('[v0] Follow check error for', user.id, followError)
-              followStates[user.id] = false
-            } else {
-              followStates[user.id] = (followData && followData.length > 0) ? true : false
-              console.log('[v0] Follow status for', user.username, ':', followStates[user.id])
-            }
-          } catch (err) {
-            console.error('[v0] Error checking status for', user.id, err)
-            followStates[user.id] = false
-          }
+        const followingIds = (allFollows || []).map(f => f.following_id)
+        for (const user of filtered) {
+          followStates[user.id] = followingIds.includes(user.id)
         }
         setFollowingStates(followStates)
       }
 
       const resultsWithStatus = filtered.map(user => ({
         ...user,
-        isFollowing: followingStates[user.id] || false,
+        isFollowing: followStates[user.id] || false,
       }))
       
-      console.log('[v0] Final results to display:', resultsWithStatus)
       setResults(resultsWithStatus)
     } catch (error) {
       console.error('[v0] Search error:', error)
@@ -116,40 +105,48 @@ export function SearchUsers() {
     e.stopPropagation()
     if (!currentUser) return
 
-    const isCurrentlyFollowing = followingStates[userId]
+    const isCurrentlyFollowing = followingStates[userId] || false
 
     try {
       if (isCurrentlyFollowing) {
         // Unfollow
-        await supabase
+        const { error } = await supabase
           .from('follows')
           .delete()
           .eq('follower_id', currentUser.id)
           .eq('following_id', userId)
+        if (error) throw error
       } else {
         // Follow
-        await supabase
+        const { error } = await supabase
           .from('follows')
           .insert({
             follower_id: currentUser.id,
             following_id: userId,
           })
+        if (error) throw error
       }
 
+      const newFollowState = !isCurrentlyFollowing
       setFollowingStates(prev => ({
         ...prev,
-        [userId]: !isCurrentlyFollowing,
+        [userId]: newFollowState,
       }))
 
       setResults(prev =>
         prev.map(user =>
           user.id === userId
-            ? { ...user, isFollowing: !isCurrentlyFollowing }
+            ? { ...user, isFollowing: newFollowState }
             : user
         )
       )
     } catch (error) {
-      console.error('Error toggling follow:', error)
+      console.error('[v0] Error toggling follow:', error)
+      // Revert state on error
+      setFollowingStates(prev => ({
+        ...prev,
+        [userId]: isCurrentlyFollowing,
+      }))
     }
   }
 
@@ -159,12 +156,16 @@ export function SearchUsers() {
 
     try {
       // Get or create direct conversation
-      const { data: existingConversations } = await supabase
+      const { data: existingConversations, error: convError } = await supabase
         .from('conversation_participants')
         .select('conversation_id')
         .eq('user_id', currentUser.id)
 
+      if (convError) throw convError
+
       let conversationId = null
+      let existingConv = false
+
       for (const { conversation_id } of existingConversations || []) {
         const { data: participants } = await supabase
           .from('conversation_participants')
@@ -173,40 +174,58 @@ export function SearchUsers() {
 
         if (participants?.length === 2 && participants.some(p => p.user_id === selectedUser.id)) {
           conversationId = conversation_id
+          existingConv = true
           break
         }
       }
 
       if (!conversationId) {
         // Create new conversation
-        const { data: conversation } = await supabase
+        const { data: conversation, error: createError } = await supabase
           .from('conversations')
-          .insert({ conversation_type: 'direct' })
+          .insert({ conversation_type: 'direct', created_by: currentUser.id })
           .select()
           .single()
 
-        conversationId = conversation?.id
+        if (createError || !conversation) {
+          throw new Error('Failed to create conversation')
+        }
+
+        conversationId = conversation.id
 
         // Add participants
-        await supabase.from('conversation_participants').insert([
+        const { error: partError } = await supabase.from('conversation_participants').insert([
           { conversation_id: conversationId, user_id: currentUser.id },
           { conversation_id: conversationId, user_id: selectedUser.id },
         ])
 
+        if (partError) throw partError
+
+        // Fetch user details for the conversation
+        const { data: userDetails } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', selectedUser.id)
+          .single()
+
         const newConversation = {
           id: conversationId,
           conversation_type: 'direct' as const,
-          created_at: new Date().toISOString(),
-          participants: [selectedUser],
+          created_at: conversation.created_at,
+          participants: userDetails ? [userDetails] : [selectedUser],
         }
         addConversation(newConversation)
       }
 
       setQuery('')
       setResults([])
-      router.push('/chat')
+      
+      // Wait a moment for state to update, then navigate
+      setTimeout(() => {
+        router.push('/chat')
+      }, 100)
     } catch (error) {
-      console.error('Error creating conversation:', error)
+      console.error('[v0] Error creating conversation:', error)
     }
   }
 
@@ -216,20 +235,15 @@ export function SearchUsers() {
         type="text"
         value={query}
         onChange={handleSearch}
-        placeholder="Search by name or email..."
+        placeholder="Search users or type to see all..."
         className="w-full px-3 sm:px-4 py-2 border border-primary/30 rounded-lg bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary text-sm sm:text-base transition-all"
+        autoFocus
       />
 
       {loading && (
         <div className="text-sm text-muted-foreground text-center py-3 flex items-center justify-center gap-2">
           <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-          <span>Searching...</span>
-        </div>
-      )}
-
-      {!loading && query.length < 2 && query.length > 0 && (
-        <div className="text-sm text-muted-foreground text-center py-3">
-          Type at least 2 characters to search
+          <span>Loading users...</span>
         </div>
       )}
 

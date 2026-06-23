@@ -159,28 +159,31 @@ export default function UserProfilePage() {
     try {
       if (isFollowing) {
         // Unfollow
-        await supabase
+        const { error } = await supabase
           .from('follows')
           .delete()
           .eq('follower_id', currentUser.id)
           .eq('following_id', userId)
+        if (error) throw error
       } else {
         // Follow
-        await supabase
+        const { error } = await supabase
           .from('follows')
           .insert({
             follower_id: currentUser.id,
             following_id: userId,
           })
+        if (error) throw error
       }
 
-      setIsFollowing(!isFollowing)
+      const newFollowState = !isFollowing
+      setIsFollowing(newFollowState)
       setStats(prev => ({
         ...prev,
         followers: prev.followers + (isFollowing ? -1 : 1),
       }))
     } catch (error) {
-      console.error('Error toggling follow:', error)
+      console.error('[v0] Error toggling follow:', error)
     }
   }
 
@@ -189,10 +192,12 @@ export default function UserProfilePage() {
 
     try {
       // Get or create direct conversation
-      const { data: existingConversations } = await supabase
+      const { data: existingConversations, error: convError } = await supabase
         .from('conversation_participants')
         .select('conversation_id')
         .eq('user_id', currentUser.id)
+
+      if (convError) throw convError
 
       let conversationId = null
       for (const { conversation_id } of existingConversations || []) {
@@ -209,24 +214,30 @@ export default function UserProfilePage() {
 
       if (!conversationId) {
         // Create new conversation
-        const { data: conversation } = await supabase
+        const { data: conversation, error: createError } = await supabase
           .from('conversations')
-          .insert({ conversation_type: 'direct' })
+          .insert({ conversation_type: 'direct', created_by: currentUser.id })
           .select()
           .single()
 
-        conversationId = conversation?.id
+        if (createError || !conversation) {
+          throw new Error('Failed to create conversation')
+        }
+
+        conversationId = conversation.id
 
         // Add participants
-        await supabase.from('conversation_participants').insert([
+        const { error: partError } = await supabase.from('conversation_participants').insert([
           { conversation_id: conversationId, user_id: currentUser.id },
           { conversation_id: conversationId, user_id: userId },
         ])
+
+        if (partError) throw partError
       }
 
       router.push('/chat')
     } catch (error) {
-      console.error('Error starting conversation:', error)
+      console.error('[v0] Error starting conversation:', error)
     }
   }
 

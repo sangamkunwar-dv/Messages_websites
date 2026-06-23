@@ -51,6 +51,18 @@ export function useChatInit() {
     }
 
     initializeChat()
+
+    // Set up polling to refresh conversations every 3 seconds
+    const pollInterval = setInterval(async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (user) {
+        await loadConversations(user.id)
+      }
+    }, 3000)
+
+    return () => clearInterval(pollInterval)
   }, [])
 
   const loadConversations = async (userId: string) => {
