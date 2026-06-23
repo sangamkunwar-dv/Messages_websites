@@ -152,16 +152,21 @@ export async function createGroupConversation(
     ...new Set([userId, ...participantIds]), // Remove duplicates
   ]
 
-  const { error: partError } = await supabase
-    .from('conversation_participants')
-    .insert(
-      allParticipants.map((id) => ({
-        conversation_id: conversation.id,
-        user_id: id,
-      }))
-    )
+  const participantData = allParticipants.map((id) => ({
+    conversation_id: conversation.id,
+    user_id: id,
+  }))
 
-  if (partError) throw partError
+  // Insert participants in batches to avoid issues
+  const batchSize = 5
+  for (let i = 0; i < participantData.length; i += batchSize) {
+    const batch = participantData.slice(i, i + batchSize)
+    const { error: partError } = await supabase
+      .from('conversation_participants')
+      .insert(batch)
+
+    if (partError) throw partError
+  }
 
   return conversation.id
 }
@@ -373,6 +378,73 @@ export function subscribeToFollows(
         schema: 'public',
         table: 'follows',
         filter: `follower_id=eq.${userId}`,
+      },
+      (payload) => {
+        onDelete(payload.old.id)
+      }
+    )
+    .subscribe()
+
+  return () => channel.unsubscribe()
+}
+
+/**
+ * Subscribe to conversation updates (group name, avatar, settings)
+ */
+export function subscribeToConversations(
+  conversationId: string,
+  onUpdate: (conversation: any) => void
+) {
+  const channel = supabase.channel(`conversations:${conversationId}`)
+
+  channel
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'conversations',
+        filter: `id=eq.${conversationId}`,
+      },
+      (payload) => {
+        onUpdate(payload.new)
+      }
+    )
+    .subscribe()
+
+  return () => channel.unsubscribe()
+}
+
+/**
+ * Subscribe to new conversation participants
+ */
+export function subscribeToParticipants(
+  conversationId: string,
+  onInsert: (participant: any) => void,
+  onDelete: (participantId: string) => void
+) {
+  const channel = supabase.channel(`participants:${conversationId}`)
+
+  channel
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'conversation_participants',
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      (payload) => {
+        onInsert(payload.new)
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'conversation_participants',
+        filter: `conversation_id=eq.${conversationId}`,
       },
       (payload) => {
         onDelete(payload.old.id)

@@ -67,27 +67,51 @@ export function GroupCreationDialog({ isOpen, onClose, onGroupCreated }: GroupCr
 
     setLoading(true)
     try {
+      console.log('[v0] Creating group conversation:', groupName)
+      
       // Create group conversation
-      const { data: conversation } = await supabase
+      const { data: conversation, error: convError } = await supabase
         .from('conversations')
         .insert({
           conversation_type: 'group',
           group_name: groupName,
           relationship_type: selectedRelationship,
+          created_by: currentUser.id,
         })
         .select()
         .single()
 
-      if (!conversation) throw new Error('Failed to create conversation')
+      if (convError || !conversation) {
+        console.error('[v0] Error creating conversation:', convError)
+        throw new Error('Failed to create conversation')
+      }
+
+      console.log('[v0] Conversation created:', conversation.id)
 
       // Add all selected users and current user as participants
       const participants = [currentUser.id, ...selectedUsers]
-      await supabase.from('conversation_participants').insert(
-        participants.map(userId => ({
-          conversation_id: conversation.id,
-          user_id: userId,
-        }))
-      )
+      console.log('[v0] Adding participants:', participants.length)
+      
+      const participantData = participants.map(userId => ({
+        conversation_id: conversation.id,
+        user_id: userId,
+      }))
+
+      // Insert participants in batches
+      const batchSize = 5
+      for (let i = 0; i < participantData.length; i += batchSize) {
+        const batch = participantData.slice(i, i + batchSize)
+        const { error: partError } = await supabase
+          .from('conversation_participants')
+          .insert(batch)
+
+        if (partError) {
+          console.error('[v0] Error adding participants:', partError)
+          throw partError
+        }
+      }
+
+      console.log('[v0] All participants added')
 
       // Fetch participant data
       const { data: participantUsers } = await supabase
@@ -99,18 +123,21 @@ export function GroupCreationDialog({ isOpen, onClose, onGroupCreated }: GroupCr
         id: conversation.id,
         conversation_type: 'group' as const,
         group_name: groupName,
+        group_avatar_url: conversation.group_avatar_url,
+        group_category: conversation.group_category,
         relationship_type: selectedRelationship,
-        created_at: new Date().toISOString(),
+        created_at: conversation.created_at,
         participants: participantUsers || [],
       }
 
+      console.log('[v0] Group created successfully, adding to store')
       addConversation(newConversation)
       onGroupCreated?.()
       onClose()
       resetForm()
     } catch (error) {
-      console.error('Error creating group:', error)
-      alert('Failed to create group')
+      console.error('[v0] Error creating group:', error)
+      alert('Failed to create group: ' + (error instanceof Error ? error.message : 'Unknown error'))
     } finally {
       setLoading(false)
     }

@@ -5,6 +5,7 @@ import { format } from 'date-fns'
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { AvatarImage } from '@/components/avatar-image'
 
 interface MessageBubbleProps {
   message: Message
@@ -66,13 +67,24 @@ export function MessageBubble({ message, isOwn, theme }: MessageBubbleProps) {
 
   return (
     <div
-      className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group cursor-pointer`}
+      className={`flex ${isOwn ? 'justify-end' : 'justify-start'} gap-2 group cursor-pointer mb-2 items-end`}
       onClick={() => message.whisper_mode && setIsRevealed(!isRevealed)}
       onMouseEnter={() => message.whisper_mode && setIsRevealed(true)}
       onMouseLeave={() => message.whisper_mode && setIsRevealed(false)}
     >
+      {/* Sender Avatar for group messages */}
+      {!isOwn && message.sender && (
+        <AvatarImage
+          src={message.sender.avatar_url}
+          alt={message.sender.username}
+          initials={message.sender.username?.[0]?.toUpperCase() || '?'}
+          size="sm"
+          className="opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+        />
+      )}
+
       <div
-        className={`max-w-xs lg:max-w-md xl:max-w-lg px-4 py-2 rounded-lg relative ${getBubbleClasses()} ${
+        className={`max-w-xs lg:max-w-md xl:max-w-lg px-4 py-2.5 rounded-lg relative ${getBubbleClasses()} ${
           isOwn ? 'rounded-br-none' : 'rounded-bl-none'
         } ${
           message.whisper_mode && !isRevealed
@@ -80,7 +92,7 @@ export function MessageBubble({ message, isOwn, theme }: MessageBubbleProps) {
             : isRevealed && message.whisper_mode
             ? 'opacity-100 blur-none'
             : ''
-        } transition-all duration-200`}
+        } transition-all duration-200 shadow-md ${isOwn ? 'group-hover:shadow-lg' : 'group-hover:shadow-md'} group-hover:scale-[1.02]`}
       >
         {/* Whisper Mode Indicator */}
         {message.whisper_mode && !isRevealed && (

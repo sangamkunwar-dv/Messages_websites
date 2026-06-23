@@ -7,6 +7,7 @@ import { MessageBubble } from './message-bubble'
 import { MessageInput } from './message-input'
 import { CallDialog } from './call-dialog'
 import { ConversationSettings } from './conversation-settings'
+import { AvatarImage } from '@/components/avatar-image'
 
 export function ChatWindow() {
   const { currentConversation, currentUser, messages, setMessages, addMessage } = useChatStore()
@@ -326,9 +327,24 @@ export function ChatWindow() {
       {/* Chat Header */}
       <div className={`p-4 border-b border-border flex items-center justify-between ${theme.headerBg} sticky top-16 sm:top-0 z-40`}>
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold flex-shrink-0">
-            {otherUser?.username?.[0]?.toUpperCase() || '?'}
-          </div>
+          <AvatarImage
+            src={
+              currentConversation.conversation_type === 'direct'
+                ? otherUser?.avatar_url
+                : currentConversation.group_avatar_url
+            }
+            alt={
+              currentConversation.conversation_type === 'direct'
+                ? otherUser?.username || 'User'
+                : currentConversation.group_name || 'Group'
+            }
+            initials={
+              currentConversation.conversation_type === 'direct'
+                ? otherUser?.username?.[0]?.toUpperCase() || '?'
+                : currentConversation.group_name?.[0]?.toUpperCase() || '?'
+            }
+            size="sm"
+          />
           <div className="min-w-0">
             <h2 className="font-bold truncate">
               {currentConversation.conversation_type === 'direct'

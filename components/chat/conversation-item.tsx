@@ -4,6 +4,7 @@ import { Conversation } from '@/lib/store/chat-store'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useChatStore } from '@/lib/store/chat-store'
+import { AvatarImage } from '@/components/avatar-image'
 
 interface ConversationItemProps {
   conversation: Conversation
@@ -84,33 +85,57 @@ export function ConversationItem({ conversation, onClick }: ConversationItemProp
   return (
     <button
       onClick={onClick}
-      className="w-full px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition text-left"
+      className="w-full px-4 py-3 border-b border-border hover:bg-muted transition-all duration-200 text-left group relative overflow-hidden"
     >
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
-          {conversation.conversation_type === 'direct'
-            ? otherUser?.username?.[0]?.toUpperCase() || '?'
-            : conversation.group_name?.[0]?.toUpperCase() || '?'}
+      {/* Background gradient on hover */}
+      <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none" />
+      
+      <div className="flex items-center gap-3 relative z-10">
+        {/* Avatar with image support */}
+        <div className="group/avatar">
+          <AvatarImage
+            src={
+              conversation.conversation_type === 'direct'
+                ? otherUser?.avatar_url
+                : conversation.group_avatar_url
+            }
+            alt={
+              conversation.conversation_type === 'direct'
+                ? otherUser?.username || 'User'
+                : conversation.group_name || 'Group'
+            }
+            initials={
+              conversation.conversation_type === 'direct'
+                ? otherUser?.username?.[0]?.toUpperCase() || '?'
+                : conversation.group_name?.[0]?.toUpperCase() || '?'
+            }
+            size="md"
+            className="shadow-md group-hover/avatar:shadow-lg transition-shadow duration-200"
+          />
         </div>
+
+        {/* Text content */}
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-gray-900 truncate">
+          <p className="font-medium text-foreground truncate group-hover:font-semibold transition-all">
             {conversation.conversation_type === 'direct'
               ? otherUser?.username || 'Loading...'
               : conversation.group_name}
           </p>
-          <p className="text-sm text-gray-600 truncate">
+          <p className="text-sm text-muted-foreground truncate group-hover:text-foreground/70 transition-colors">
             {conversation.last_message?.content || 'No messages yet'}
           </p>
         </div>
+
+        {/* Follow button with enhanced styling */}
         {showFollowButton && (
           <button
             onClick={handleFollowToggle}
             disabled={followLoading}
-            className={`px-3 py-1 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-200 shadow-sm hover:shadow-md flex-shrink-0 ${
               isFollowing
-                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                : 'bg-red-500 text-white hover:bg-red-600'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 hover:shadow-md'
+                : 'bg-red-500 text-white hover:bg-red-600 hover:shadow-md hover:shadow-red-500/50'
+            } disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none`}
           >
             {followLoading ? '...' : isFollowing ? 'Following' : 'Follow'}
           </button>
